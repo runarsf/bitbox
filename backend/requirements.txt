@@ -1,0 +1,6 @@
+itsdangerous
+flask
+#flask_sqlalchemy
+sqlalchemy
+flask_httpauth
+passlib

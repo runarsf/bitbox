@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+cat app.py | grep curl | awk '{$1=$1};1' | fzf | bash

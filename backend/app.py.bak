@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+import os
+from werkzeug.exceptions import HTTPException
+from flask import Flask, abort, request, jsonify, g, url_for
+from flask_sqlalchemy import SQLAlchemy
+from flask_httpauth import HTTPBasicAuth
+from passlib.apps import custom_app_context as pwd_context
+from itsdangerous import (TimedJSONWebSignatureSerializer
+                          as Serializer, BadSignature, SignatureExpired)
+
+DB_FILE = os.environ.get('DB_FILE', 'db.sqlite')
+PORT = os.environ.get('PORT', 5000)
+
+# initialization
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_FILE}'
+app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# extensions
+db = SQLAlchemy(app)
+auth = HTTPBasicAuth()
+
+
+# https://blog.miguelgrinberg.com/post/restful-authentication-with-flask
+# https://github.com/miguelgrinberg/REST-auth/blob/master/api.py
+
+# https://flask-sqlalchemy.palletsprojects.com/en/2.x/models/
+class User(db.Model):
+    """
+    User table.
+    """
+    __tablename__ = 'users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(64))
+    categories = db.relationship('Category', backref='user', lazy=True)
+
+    def __repr__(self):
+        return '<User %r>' % self.username
+
+    def hash_password(self, password):
+        """
+        Set the password_hash variable to a string containging the hashed password.
+        """
+        self.password_hash = pwd_context.hash(password)
+
+    def verify_password(self, password):
+        """
+        Match the provided password with the password hash.
+        """
+        return pwd_context.verify(password, self.password_hash)
+
+    def generate_auth_token(self, expiration=600):
+        """
+        Generate an auth token.
+        """
+        s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
+        return s.dumps({'id': self.id})
+
+    @staticmethod
+    def verify_auth_token(token):
+        """
+        Verify auth token.
+        """
+        s = Serializer(app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except SignatureExpired:
+            return None    # valid token, but expired
+        except BadSignature:
+            return None    # invalid token
+        user = User.query.get(data['id'])
+        return user
+
+class Category(db.Model):
+    """
+    Category table.
+    """
+    __tablename__ = 'categories'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(80), unique=False, nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    links = db.relationship('Link', backref='category', lazy=True)
+
+class Link(db.Model):
+    """
+    Link table.
+    """
+    __tablename__ = 'links'
+
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.String(180), unique=False, nullable=True, index=True)
+    title = db.Column(db.String(80), unique=False, nullable=True, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=False)
+
+@auth.verify_password
+def verify_password(username_or_token, password):
+    # first try to authenticate by token
+    user = User.verify_auth_token(username_or_token)
+    if not user:
+        # try to authenticate with username/password
+        user = User.query.filter_by(username=username_or_token).first()
+        if not user or not user.verify_password(password):
+            return False
+    g.user = user
+    return True
+
+
+@app.route('/api/register', methods=['POST'])
+def _api_register():
+    """
+    curl -i -X POST -H "Content-Type: application/json" -d '{"username":"unnamde","password":"pword"}' http://127.0.0.1:5000/api/register
+    """
+    username = request.json.get('username')
+    password = request.json.get('password')
+    if username is None or password is None:
+        abort(400, description='Missing arguments.')
+    # TODO: Check if this is necessary, since unique=True is set.
+    if User.query.filter_by(username=username).first() is not None:
+        abort(403, description='A user with that username already exists.')
+    user = User(username=username)
+    user.hash_password(password)
+    # TODO: Check if session.add and commit is necessary.
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'username': user.username
+    }), 201, {
+        'Location': url_for(f'user/{user.id}')
+        #'Location': url_for('get_user', id=user.id, _external=True)
+    }
+
+@app.route('/api/category', methods=['POST'])
+@auth.login_required
+def _api_category():
+    """
+    curl -u unnamde:pword -i -X POST -H "Content-Type: application/json" -d '{"title":"TestCategory"}' http://127.0.0.1:5000/api/category
+    """
+    category_title = request.json.get('title')
+    if category_title is None:
+        abort(400, description='Missing arguments.')
+    category = Category(title=category_title, user_id=g.user.id)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'username': category.title
+    }), 201
+
+@app.route('/api/email', methods=['POST'])
+@auth.login_required
+def _api_email():
+    """
+    curl -u unnamde:pword -i -X POST -H "Content-Type: application/json" -d '{"new_email":"root@runarsf.dev"}' http://127.0.0.1:5000/api/email
+    """
+    new_email = request.json.get('new_email')
+    g.user.email = new_email
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'message': 'Email changed.'
+    }), 200
+
+@app.route('/api/password', methods=['POST'])
+@auth.login_required
+def _api_password():
+    """
+    curl -u unnamde:pword -i -X POST -H "Content-Type: application/json" -d '{"new_password":"pword"}' http://127.0.0.1:5000/api/password
+    """
+    new_password = request.json.get('new_password')
+    g.user.hash_password(new_password)
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'message': 'Password changed.'
+    }), 200
+
+@app.route('/api/delete', methods=['DELETE', 'POST'])
+@auth.login_required
+def _api_delete():
+    """
+    curl -u unnamde:pword -i -X POST http://127.0.0.1:5000/api/delete
+    """
+    # FIXME: Should this method be converted into a method of the User class?
+    # FIXME: Should this use filter_by or just g.user directly?
+    User.query.filter_by(id=g.user.id).delete()
+    return jsonify({
+        'success': True,
+        'message': 'User deleted.'
+    }), 200
+
+@app.route('/api/user/<int:uid>', methods=['GET'])
+def _api_user_id(uid):
+    """
+    curl -i -X GET http://127.0.0.1:5000/api/user/1
+    """
+    user = User.query.get(uid)
+    if not user:
+        abort(404, description='User not found.')
+    return jsonify({
+        'success': True,
+        'username': user.username
+    }), 200
+
+@app.route('/api/token', methods=['GET'])
+@auth.login_required
+def _api_token():
+    """
+    curl -u unnamde:pword -i -X GET http://127.0.0.1:5000/api/token
+         -u <token>:token
+    """
+    _tokenDurationHours = 600
+    # TODO: Is this actually committed to the database?
+    token = g.user.generate_auth_token(_tokenDurationHours)
+    return jsonify({
+        'success': True,
+        'token': token.decode('ascii'),
+        'duration': _tokenDurationHours
+    }), 200
+
+@app.route('/api/profile', methods=['GET'])
+@auth.login_required
+def _api_profile():
+    """
+    curl -u unnamde:pword -i -X GET http://127.0.0.1:5000/api/profile
+    """
+    return jsonify({
+        'success': True,
+        'username': g.user.username,
+        'email': g.user.email,
+        'password_hash': g.user.password_hash
+    }), 200
+
+
+@app.errorhandler(Exception)
+def handle_error(err):
+    code = 500
+    if isinstance(err, HTTPException):
+        code = err.code
+    return jsonify({
+        'success': False,
+        'error': str(err)
+    }), code
+
+
+if __name__ == '__main__':
+    #if not os.path.exists(DB_FILE):
+    db.create_all()
+    app.run(host='0.0.0.0', port=PORT, debug=True)

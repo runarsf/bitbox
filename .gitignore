@@ -1,0 +1,5 @@
+.env
+postgres/data/
+*.sqlite
+*.db
+db.*

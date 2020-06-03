@@ -1,0 +1,52 @@
+version: '3'
+
+services:
+  # docker exec -it auth-db psql -U postgres
+  auth-db:
+    image: "postgres:latest"
+    hostname: auth-db
+    container_name: auth-db
+    ports:
+      - "${DP_PORT:-5432}:${DP_PORT:-5432}"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secret}"
+      POSTGRES_DB: "${POSTGRES_DB:-auth}"
+      PGDATA: "/data/postgres"
+      #POSTGRES_HOST_AUTH_METHOD: "trust" # Disable username:password authentication
+    volumes:
+      - "./postgres/data:/data/postgres"
+      - "./postgres/postgres.conf:/etc/postgresql/postgresql.conf"
+    networks:
+      - postgres
+    restart: unless-stopped
+    command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
+
+  auth-backend:
+    image: auth-backend
+    hostname: auth-backend
+    container_name: auth-backend
+    build: ./backend
+    ports:
+      - "${BACKEND_PORT:-5000}:${BACKEND_PORT:-5000}"
+    environment:
+      DB_URL: "${DB_URL}"
+      PORT: "${BACKEND_PORT}:-5000"
+    volumes:
+      - "./backend:/app:ro"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  auth-frontend:
+    image: auth-frontend
+    hostname: auth-frontend
+    container_name: auth-frontend
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-4000}:${FRONTEND_PORT:-4000}"
+    volumes:
+      - "./frontend:/app:ro"
+    networks:
+      - postgres
+    restart: unless-stopped

@@ -1,0 +1,29 @@
+bitbox:
+  frontend:
+    ☐ Make pretty.
+    ☐ Add super intrusive google analytics and cookies consent.
+    ✔ Automatically display user email.
+  backend:
+    ☐ Fix error `GET https://192.168.0.42:4444/sockjs-node/info?t=1572472345965 net::ERR_SSL_PROTOCOL_ERROR`.
+    ☐ Share(ni)x support.
+    ☐ Password reset option.
+    ☐ Delete account option.
+    ☐ User should have to verify email when creating account.
+  code:
+    ☐ Improve TODO
+      ☐ https://marketplace.visualstudio.com/items?itemName=fabiospampinato.vscode-todo-plus
+    ☐ Separate configuration files from package.json (like babel and vue config).
+      ✔ Don't store firebase config in ENV, but in its own config file.
+    ✔ Make docker(-compose) container.
+    ☐ Add Travis-CI test.
+    ☐ Consider _allowing_ firebase config in .env.
+    ☐ Consider moving logo (public/bitbox.png) to src/assets/logo.png (currently Vue logo)
+  other:
+    ✔ Icon + favicon. @done(19-10-31 18:36)
+    ☐ Set up GitHub Wiki with install/setup instructions.
+      ☐ Firebase setup guide.
+      ☐ Project rename guide.
+    ☐ Consider changing name again; bitbox.
+    ☐ Move router to src/router/index.js
+    ✔ Consider name; databox, bytebox.
+      ✔ Rename repo from databox to bytebox.
