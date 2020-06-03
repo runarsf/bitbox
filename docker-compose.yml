@@ -6,19 +6,19 @@ services:
     image: "postgres:latest"
     hostname: auth-db
     container_name: auth-db
-    ports:
-      - "${DP_PORT:-5432}:${DP_PORT:-5432}"
+    # ports:
+    #   - "${DP_PORT:-5432}:${DP_PORT:-5432}"
     environment:
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-secret}"
       POSTGRES_DB: "${POSTGRES_DB:-auth}"
       PGDATA: "/data/postgres"
-      #POSTGRES_HOST_AUTH_METHOD: "trust" # Disable username:password authentication
+      # POSTGRES_HOST_AUTH_METHOD: "trust" # Disable username:password authentication
     volumes:
       - "./postgres/data:/data/postgres"
       - "./postgres/postgres.conf:/etc/postgresql/postgresql.conf"
     networks:
-      - postgres
+      - db
     restart: unless-stopped
     command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf" ]
 
@@ -35,7 +35,7 @@ services:
     volumes:
       - "./backend:/app:ro"
     networks:
-      - postgres
+      - db
     restart: unless-stopped
 
   auth-frontend:
@@ -48,5 +48,9 @@ services:
     volumes:
       - "./frontend:/app:ro"
     networks:
-      - postgres
+      - db
     restart: unless-stopped
+
+networks:
+  db:
+    driver: bridge
